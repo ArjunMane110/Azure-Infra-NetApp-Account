@@ -7,39 +7,37 @@ terraform {
   }
 }
 
-
 provider "azurerm" {
   features {}
-  subscription_id = var.subscription_id # Replace with your valid sub ID
-  tenant_id       = var.tenant_id # Replace with your valid tenant ID
+  subscription_id = var.subscription_id # Replace with your valid subscription ID
+  tenant_id       = var.tenant_id       # Replace with your valid tenant ID
 }
 
 # Resource Group
 resource "azurerm_resource_group" "rg" {
-  name     = "devops-lab-rg"
-  location = "south africa north"
+  name     = var.resource_group_name
+  location = var.location
 }
 
-# Create a virtual network
-resource "azurerm_virtual_network" "devops_vnet" {
-  name                = "devopsVnet"
+# Virtual Network
+resource "azurerm_virtual_network" "main_vnet" {
+  name                = var.virtual_network_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   address_space       = ["10.0.0.0/16"]
 }
 
-# Create a subnet for the VMs
+# VM Subnet
 resource "azurerm_subnet" "vm_subnet" {
-  name                 = "devops-subnet"
+  name                 = var.subnet_name
   resource_group_name  = azurerm_resource_group.rg.name
-  virtual_network_name = azurerm_virtual_network.devops_vnet.name
+  virtual_network_name = azurerm_virtual_network.main_vnet.name
   address_prefixes     = ["10.0.2.0/24"]
 }
 
 # Network Security Group
-# Create a Network Security Group (NSG) for the VMs
-resource "azurerm_network_security_group" "devops_nsg" {
-  name                = "devopsNSG"
+resource "azurerm_network_security_group" "nsg" {
+  name                = var.nsg_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -57,9 +55,8 @@ resource "azurerm_network_security_group" "devops_nsg" {
 }
 
 # Storage Account
-# Create a storage account for the lab
-resource "azurerm_storage_account" "devops_storage_account" {
-  name                     = "devopslabstorage135" # must be globally unique
+resource "azurerm_storage_account" "storage" {
+  name                     = var.storage_account_name # must be globally unique
   resource_group_name      = var.resource_group_name
   account_kind             = "StorageV2"
   location                 = var.location
@@ -67,23 +64,20 @@ resource "azurerm_storage_account" "devops_storage_account" {
   account_replication_type = "LRS"
 }
 
-# Public IP Addresses
-# Create two public IPs for the Windows VMs
-resource "azurerm_public_ip" "vm_public_ip" {
+# Public IPs
+resource "azurerm_public_ip" "vm_pip" {
   count               = 2
-  name                = "devops-pip-${count.index}"
+  name                = "pip-${count.index}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  allocation_method   = "Static"   # ✅ Must be static for Standard SKU
-  sku                 = "Standard" # Optional if you explicitly need Standard
-  zones               = ["1"]      # Optional (you can remove this if not using zonal deployment)
+  allocation_method   = "Static"
+  sku                 = "Standard"
 }
 
-# Network Interface Cards (NICs)
-# Create two NICs for the Windows VMs
+# NICs
 resource "azurerm_network_interface" "vm_nic" {
   count               = 2
-  name                = "devopsNIC-${count.index}"
+  name                = "nic-${count.index}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -91,23 +85,21 @@ resource "azurerm_network_interface" "vm_nic" {
     name                          = "internal"
     subnet_id                     = azurerm_subnet.vm_subnet.id
     private_ip_address_allocation = "Dynamic"
-    public_ip_address_id          = azurerm_public_ip.vm_public_ip[count.index].id
+    public_ip_address_id          = azurerm_public_ip.vm_pip[count.index].id
   }
 }
 
-# Network Security Group Association
-# Associate the NSG with the NICs of the VMs
-resource "azurerm_network_interface_security_group_association" "devops_nic_nsg" {
+# Associate NSG with NICs
+resource "azurerm_network_interface_security_group_association" "nic_nsg" {
   count                     = 2
   network_interface_id      = azurerm_network_interface.vm_nic[count.index].id
-  network_security_group_id = azurerm_network_security_group.devops_nsg.id
+  network_security_group_id = azurerm_network_security_group.nsg.id
 }
 
 # Windows Virtual Machines
-# Create two Windows VMs in the specified resource group and subnet
 resource "azurerm_windows_virtual_machine" "vm" {
   count               = 2
-  name                = "devopsWinVM-${count.index}"
+  name                = "winvm-${count.index}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   size                = "Standard_B2ms"
@@ -115,14 +107,12 @@ resource "azurerm_windows_virtual_machine" "vm" {
   admin_username = var.admin_username
   admin_password = var.admin_password
 
-  network_interface_ids = [
-    azurerm_network_interface.vm_nic[count.index].id,
-  ]
+  network_interface_ids = [azurerm_network_interface.vm_nic[count.index].id]
 
   os_disk {
     caching              = "ReadWrite"
     storage_account_type = "Standard_LRS"
-    name                 = "devopsWinOsDisk-${count.index}"
+    name                 = "winvm-osdisk-${count.index}"
   }
 
   source_image_reference {
@@ -135,8 +125,7 @@ resource "azurerm_windows_virtual_machine" "vm" {
   provision_vm_agent = true
 }
 
-# Azure Active Directory Domain Services
-# Create an Azure Active Directory Domain Services for the NetApp account
+# NetApp Account
 resource "azurerm_netapp_account" "netappaccount" {
   name                = var.netapp_account_name
   location            = azurerm_resource_group.rg.location
@@ -152,43 +141,40 @@ resource "azurerm_netapp_account" "netappaccount" {
   }
 
   identity {
-    type = "UserAssigned"
-    identity_ids = [
-      azurerm_user_assigned_identity.uai.id
-    ]
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.uai.id]
   }
 }
 
 # User Assigned Identity
 resource "azurerm_user_assigned_identity" "uai" {
-  name                = "devopsuai"
+  name                = var.uai_name
   location            = var.location
   resource_group_name = var.resource_group_name
 }
 
-
 # NetApp Capacity Pool
 resource "azurerm_netapp_pool" "netapppool" {
-  name                = "devopsnetapppool"
+  name                = var.netapp_pool_name
   location            = var.location
   resource_group_name = var.resource_group_name
   account_name        = var.netapp_account_name
   service_level       = "Premium"
-  size_in_tb          = 4
+  size_in_tb          = var.size_in_tb
 }
 
-# NetApp Volume
-resource "azurerm_netapp_volume" "netappvol" {
-  name                = var.netapp_volume_name
+# NetApp Volume (NFS)
+resource "azurerm_netapp_volume" "nfs_volume" {
+  name                = var.netapp_volume_config.name
   location            = var.netapp_volume_config.location
   resource_group_name = azurerm_resource_group.rg.name
   account_name        = azurerm_netapp_account.netappaccount.name
   pool_name           = azurerm_netapp_pool.netapppool.name
-  volume_path         = "devopsnetappvolume"
-  service_level       = "Premium"
+  volume_path         = var.netapp_volume_config.volume_path
+  service_level       = var.netapp_volume_config.service_level
   subnet_id           = azurerm_subnet.netapp_subnet.id
-  protocols           = ["NFSv4.1"]
-  storage_quota_in_gb = 100
+  protocols           = var.netapp_volume_config.protocols
+  storage_quota_in_gb = var.netapp_volume_config.storage_quota_in_gb
 
   export_policy_rule {
     rule_index          = 1
@@ -200,21 +186,22 @@ resource "azurerm_netapp_volume" "netappvol" {
   }
 
   data_protection_backup_policy {
-    backup_vault_id  = azurerm_netapp_backup_vault.devops-backup-vault.id
-    backup_policy_id = azurerm_netapp_backup_policy.weekly_backup.id
+    backup_vault_id  = azurerm_netapp_backup_vault.backup.id
+    backup_policy_id = azurerm_netapp_backup_policy.policy.id
     policy_enabled   = true
   }
 }
 
-#netapp backup vault and policy
-resource "azurerm_netapp_backup_vault" "devops-backup-vault" {
+# NetApp Backup Vault
+resource "azurerm_netapp_backup_vault" "backup" {
   name                = var.backup_vault
   resource_group_name = azurerm_resource_group.rg.name
   location            = var.location
   account_name        = azurerm_netapp_account.netappaccount.name
 }
 
-resource "azurerm_netapp_backup_policy" "weekly_backup" {
+# NetApp Backup Policy
+resource "azurerm_netapp_backup_policy" "policy" {
   name                    = var.backup_policy
   location                = var.location
   resource_group_name     = azurerm_resource_group.rg.name
@@ -225,44 +212,32 @@ resource "azurerm_netapp_backup_policy" "weekly_backup" {
   enabled                 = true
 }
 
-# Create a subnet for the NetApp volume
+# NetApp Subnet
 resource "azurerm_subnet" "netapp_subnet" {
-  name                 = "netapp-subnet"
+  name                 = var.netapp_subnet_name
   resource_group_name  = azurerm_resource_group.rg.name
-  virtual_network_name = azurerm_virtual_network.vnet.name
+  virtual_network_name = azurerm_virtual_network.main_vnet.name
   address_prefixes     = ["10.0.1.0/24"]
 
   delegation {
     name = "netapp-delegation"
-
     service_delegation {
-      name = "Microsoft.Netapp/volumes"
-      actions = [
-        "Microsoft.Network/virtualNetworks/subnets/action"
-      ]
+      name    = "Microsoft.Netapp/volumes"
+      actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
     }
   }
 }
 
-# Create a virtual network for the NetApp volume
-resource "azurerm_virtual_network" "vnet" {
-  name                = "devops-vnet"
-  address_space       = ["10.0.0.0/16"]
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-}
-
-### SMB Volume ###
-
-resource "azurerm_netapp_volume" "smbvolume" {
-  name                = var.smb_volume_name
+# NetApp SMB Volume
+resource "azurerm_netapp_volume" "smb_volume" {
+  name                = var.smb_volume_config.name
   location            = var.smb_volume_config.location
   resource_group_name = azurerm_resource_group.rg.name
   account_name        = azurerm_netapp_account.netappaccount.name
   pool_name           = azurerm_netapp_pool.netapppool.name
-  volume_path         = "devopssmbvolume"
-  service_level       = "Premium"
+  volume_path         = var.smb_volume_config.volume_path
+  service_level       = var.smb_volume_config.service_level
   subnet_id           = azurerm_subnet.netapp_subnet.id
-  protocols           = ["CIFS"]
-  storage_quota_in_gb = 50
+  protocols           = var.smb_volume_config.protocols
+  storage_quota_in_gb = var.smb_volume_config.storage_quota_in_gb
 }
