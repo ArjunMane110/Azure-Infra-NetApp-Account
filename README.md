@@ -1,5 +1,5 @@
 # Azure-Infra-NetApp-Account
-Terraform setup for Azure infrastructure with NetApp Account, capacity pools, volumes, and networking.
+This repository contains Terraform code to deploy core Azure infrastructure along with a NetApp Account, including capacity pools, volumes, delegated subnets, and supporting network resources. It provides a structured setup for managing and scaling Azure NetApp Files within your cloud environment.
 
 
 
