@@ -6,13 +6,13 @@ This repository contains Terraform code to deploy core Azure infrastructure alon
 
 Supported Regions for NetApp Account
 
-Australia Central 2
-South Africa North
-Brazil Southeast
-France Central
-Israel Central
-Italy North
-Korea South
-Qatar Central
-Spain Central
-Sweden Central
+1. Australia central 2
+2. South Africa North
+3. Brazil Southeast
+4. France Central
+5. Israel Central
+6. Italy North
+7. Korea South
+8. Qatar Central
+9. Spain Central
+10. Sweden central
